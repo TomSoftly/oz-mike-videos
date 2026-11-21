@@ -1,0 +1,31 @@
+name: Cleanup old video branches
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete d-* branches older than 3 days
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, datetime
+          repo = os.environ["REPO"]
+          out = subprocess.check_output(["gh","api","--paginate",f"repos/{repo}/branches","--jq",".[].name"], text=True)
+          cutoff = datetime.date.today() - datetime.timedelta(days=3)
+          for b in out.split():
+              if not b.startswith("d-"): continue
+              m = re.match(r"d-(\d{4}-\d{2}-\d{2})", b)
+              old = (not m) or datetime.date.fromisoformat(m.group(1)) < cutoff
+              if old:
+                  print("delete", b)
+                  subprocess.run(["gh","api","-X","DELETE",f"repos/{repo}/git/refs/heads/{b}"], check=False)
+          PY
